@@ -19,25 +19,32 @@ import static org.assertj.core.api.Assertions.assertThat;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_EACH_TEST_METHOD)
 public class ExternalApiTest {
 
+    /**
+     * start wire mock on port 9090
+     */
     @RegisterExtension
     static WireMockExtension EXTERNAL_SERVICE = WireMockExtension.newInstance()
             .options(WireMockConfiguration.wireMockConfig().port(9090))
             .build();
 
+    // another rest template used only for this test (do not confuse with rest template that calls external api)
     @Autowired
     private TestRestTemplate testRestTemplate;
 
     @Test
     public void testFoo() {
+        // wire mock returns 500 error
         EXTERNAL_SERVICE.stubFor(get("/external-foo").willReturn(serverError()));
 
+        // five times we get 500 error
         for (int i = 0; i < 5; i++) {
             ResponseEntity<String> response = testRestTemplate.getForEntity("/foo", String.class);
             assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         }
-//        for (int i = 0; i < 5; i++) {
-//            ResponseEntity<String> response = testRestTemplate.getForEntity("/foo", String.class);
-//            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
-//        }
+        // the next calls should return service unavailable (503) because of circuit breaker
+        for (int i = 0; i < 5; i++) {
+            ResponseEntity<String> response = testRestTemplate.getForEntity("/foo", String.class);
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+        }
     }
 }
